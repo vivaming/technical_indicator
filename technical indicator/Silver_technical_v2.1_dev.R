@@ -32,7 +32,41 @@ SLVHist_02_CCI$flag=ifelse(SLVHist_02_CCI$cci>=100, 1,
 #REMOVE NA
 CCI01=SLVHist_02_CCI[is.na(SLVHist_02_CCI$cci)==FALSE]
 
+CCI02=CCI01
 
+CCI02[1:24]
+      #for (i in (1:length(CCI02)))
+      for (i in (1:24))
+          {
+            print(paste("i: ", i))
+            #SAVE CURRENT FLAG FOR LATER USE
+            CurrentFlag=as.numeric(CCI02$flag[i])
+            if (is.null(SignalFlag)==TRUE)
+              {SignalFlag=0}
+            #IF CURRENT FLAG IS A SIGNAL FLAG (1/-1)
+                if (!CCI02$flag[i]==0)
+                  {
+                    #THEN RECORD THE CURRENT DATE AS THE NEXT START DATE
+                    StartDate=index(CCI02[i])
+                    #RECORD THE SIGNAL FLAG FOR LATER USE
+                    print(index(CCI02$flag[i]))
+                    print(SignalFlag)
+                    #print(paste(StartDate, SignalFlag, sep=" - "))
+                }
+            
+            #COMPARE THE CURRENT FLAG WITH SAVED THE SIGNALFLAG
+                if (abs(CurrentFlag-SignalFlag)==2)
+                {
+                  PauseDate=index(CCI02[i])
+                  print(paste("PauseDate: ", PauseDate))
+                }
+            
+            #CHECK IF THE SIGNAL FLAG NEEDS TO BE UPDATED
+            if (!CCI02$flag[i]==0)
+              {
+              SignalFlag=as.numeric(CCI02$flag[i])
+              }
+          }
 
 # CCI_100_Plus=which(SLVHist_02_CCI>100)
 # CCI_100_Plus_Date=index(SLVHist_02_CCI[CCI_100_Plus, ])
@@ -59,24 +93,3 @@ for (i in (1:length(CCI_100_Plus_Start_Date)))
 {
   l_CCI100PlusXts[[i]]=SLVHist_02_CCI[paste(CCI_100_Plus_Start_Date[i], CCI_100_Plus_End_Date[i], sep="::")]
 }
-
-sapply(l_CCI100PlusXts, function(x) which(x==max(x)))
-l_CCI100PlusXts[[2]]
-
-SLVHist_02_CCI[1:100]
-
-# CCI_100_Plus_Date_Diff[1:20]
-# CCI_100_PLus_Gap[1:10]
-# CCI_100_Plus_Start_Date[1]
-# CCI_100_Plus_End_Date[1]
-# CCI_100_Plus_Start_Date[2]
-# CCI_100_Plus_End_Date[2]
-# CCI_100_Plus_Start_Index[1]
-# CCI_100_Plus_End_Index[1]
-# CCI_100_Plus_Start_Index[2]
-# CCI_100_Plus_End_Index[2]
-# CCI_100_PLus_Gap[1:10]
-# test=data.frame(start=CCI_100_Plus_Start_Index, end=CCI_100_Plus_End_Index)
-
-test_gap=data.frame(date=index(SLVHist_02_CCI[CCI_100_PLus_Gap]), value=SLVHist_02_CCI[CCI_100_PLus_Gap], index=CCI_100_PLus_Gap)
-test_gap[1:20]
