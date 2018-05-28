@@ -34,62 +34,63 @@ CCI01=SLVHist_02_CCI[is.na(SLVHist_02_CCI$cci)==FALSE]
 
 CCI02=CCI01
 
-CCI02[1:24]
-      #for (i in (1:length(CCI02)))
-      for (i in (1:24))
-          {
-            print(paste("i: ", i))
-            #SAVE CURRENT FLAG FOR LATER USE
+#DEFINE THE DATE VECTORS TO COLLECT DATE RANGES      
+m=1
+StartDate=date()
+EndDate=date()
+
+
+    for (i in (1:dim(CCI02)[1]))
+      {
+            if(m==1)
+            {
+              #ALWAYS STARTS FROM DAY 1
+              StartDate[m]=index(CCI02)[1]
+            }
+            #print(paste("i: ", i))
+            #SAVE CURRENT FLAG TO COMPARE WITH SIGNAL FLAG TO IDENTIFY A REVERSED DAY
             CurrentFlag=as.numeric(CCI02$flag[i])
+            #SET THE DEFAULT SIGNAL DATE
             if (is.null(SignalFlag)==TRUE)
               {SignalFlag=0}
-            #IF CURRENT FLAG IS A SIGNAL FLAG (1/-1)
-                if (!CCI02$flag[i]==0)
-                  {
-                    #THEN RECORD THE CURRENT DATE AS THE NEXT START DATE
-                    StartDate=index(CCI02[i])
-                    #RECORD THE SIGNAL FLAG FOR LATER USE
-                    print(index(CCI02$flag[i]))
-                    print(SignalFlag)
-                    #print(paste(StartDate, SignalFlag, sep=" - "))
-                }
-            
             #COMPARE THE CURRENT FLAG WITH SAVED THE SIGNALFLAG
+            #IF THE ABSOLUTE VALUE IS 2 (EITHER -1 VS 1 OR 1 VS -1) THEN IT MEANS THE TREND IS REVERSED
                 if (abs(CurrentFlag-SignalFlag)==2)
                 {
-                  PauseDate=index(CCI02[i])
-                  print(paste("PauseDate: ", PauseDate))
+                  ReversedDate=index(CCI02[i])
+                  print(paste("ReversedDate: ", ReversedDate))
+                    # ONCE WE KNOW WHERE THE TREND GETS REVERSED THEN WE SAVE THE ENDDATE
+                  EndDate[m]=ReversedDate-1
+                 
+                  #IF WE NOT YET REACH THE END OF LOOP THEN WE WILL NEED TO UPDATE THE NEXT START DATE
+                    if (i<dim(CCI02)[1])
+                      {
+                      m=m+1
+                      StartDate[m]=ReversedDate
+                    }
                 }
-            
             #CHECK IF THE SIGNAL FLAG NEEDS TO BE UPDATED
             if (!CCI02$flag[i]==0)
               {
               SignalFlag=as.numeric(CCI02$flag[i])
               }
-          }
+        }
+StartDate=StartDate[-length(StartDate)]
+StartDate=as.Date(as.numeric(StartDate), origin='1970-01-01')
+EndDate=as.Date(as.numeric(EndDate), origin='1970-01-01')  
 
-# CCI_100_Plus=which(SLVHist_02_CCI>100)
-# CCI_100_Plus_Date=index(SLVHist_02_CCI[CCI_100_Plus, ])
-# CCI_100_Plus_Date_Diff=diff(CCI_100_Plus_Date)
-
-
-#IDENTIFY WHICH DATES WHICH GAP START AND END
-#GAP=
-# CCI_100_PLus_Gap=which(CCI_100_Plus_Date_Diff>10)
-
-#START: ADD 1 AT THE FRONT AND SUBTRACT THE LAST ONE IN THE END
-#END: GAP-1
-# CCI_100_Plus_Start_Index=c(1, CCI_100_PLus_Gap[-length(CCI_100_PLus_Gap)])
-# CCI_100_Plus_End_Index=CCI_100_PLus_Gap
-
-# CCI_100_Plus_Start_Date=CCI_100_Plus_Date[CCI_100_Plus_Start_Index]
-# CCI_100_Plus_End_Date=CCI_100_Plus_Date[CCI_100_Plus_End_Index]
-
-# d_CCI100PlusStartEndDates=data.frame(start=CCI_100_Plus_Start_Date, end=CCI_100_Plus_End_Date)
 
 #SUBSET CCI 100 PLUS BY START AND END DATES
-l_CCI100PlusXts=list()
-for (i in (1:length(CCI_100_Plus_Start_Date)))
+CCI03=list()
+for (h in (1:length(StartDate)))
 {
-  l_CCI100PlusXts[[i]]=SLVHist_02_CCI[paste(CCI_100_Plus_Start_Date[i], CCI_100_Plus_End_Date[i], sep="::")]
+  CCI03[[h]]=CCI02[paste(StartDate[h], EndDate[h], sep="::")]
+  #CCI03[[h]]=data.frame(Date=index(CCI02[paste(StartDate[h], EndDate[h], sep="::")]), 
+                        #Value=as.numeric(CCI02[paste(StartDate[h], EndDate[h], sep="::")]))
 }
+
+#NUMBER OF DAYS AN OSCILLATOR CAN USUALLY LAST
+lapply(CCI03, function(x) (x$flag==1|x$flag==1))
+
+CCI03[[1]]$flag==1
+
