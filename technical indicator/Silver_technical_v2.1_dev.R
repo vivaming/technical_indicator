@@ -17,7 +17,6 @@ SLVHist_02=xts(SLVHist_01[,-1], order.by=SLVHist_01[,1])
 SLVHist_02=na.locf(SLVHist_02, fromLast = TRUE)
 
 
-
 ##STRATEGY 1#######
 #1. CCI X(14) DAYS RANGE
 #2. FIND THE CCI INDEX WHERE IT EITHER GO BEYOUD 100  OR GO BELOW -100
@@ -28,6 +27,8 @@ SLVHist_02_CCI=CCI(SLVHist_02, n=14, c=0.015)
 SLVHist_02_CCI$flag=ifelse(SLVHist_02_CCI$cci>=100, 1,
                       ifelse((SLVHist_02_CCI$cci<100 & SLVHist_02_CCI$cci>-100), 0,
                         ifelse(SLVHist_02_CCI$cci<=-100, -1, 0)))
+
+
 
 #REMOVE NA
 CCI01=SLVHist_02_CCI[is.na(SLVHist_02_CCI$cci)==FALSE]
@@ -51,7 +52,8 @@ EndDate=date()
             #SAVE CURRENT FLAG TO COMPARE WITH SIGNAL FLAG TO IDENTIFY A REVERSED DAY
             CurrentFlag=as.numeric(CCI02$flag[i])
             #SET THE DEFAULT SIGNAL DATE
-            if (is.null(SignalFlag)==TRUE)
+            # if (is.null(SignalFlag)==TRUE)
+            if (exists("SignalFlag")==FALSE)
               {SignalFlag=0}
             #COMPARE THE CURRENT FLAG WITH SAVED THE SIGNALFLAG
             #IF THE ABSOLUTE VALUE IS 2 (EITHER -1 VS 1 OR 1 VS -1) THEN IT MEANS THE TREND IS REVERSED
@@ -85,12 +87,136 @@ CCI03=list()
 for (h in (1:length(StartDate)))
 {
   CCI03[[h]]=CCI02[paste(StartDate[h], EndDate[h], sep="::")]
-  #CCI03[[h]]=data.frame(Date=index(CCI02[paste(StartDate[h], EndDate[h], sep="::")]), 
-                        #Value=as.numeric(CCI02[paste(StartDate[h], EndDate[h], sep="::")]))
+
 }
 
 #NUMBER OF DAYS AN OSCILLATOR CAN USUALLY LAST
-lapply(CCI03, function(x) (x$flag==1|x$flag==1))
+#FRIST OF ALL FILTER OUT THE NON-SIGNAL DAYS WHICH FLAG=0
+CCI04=lapply(CCI03, function(x) subset(x, !x$flag==0))
 
-CCI03[[1]]$flag==1
+#CALCULATE THE DATE DIFFERENCE WHERE THE OSCILLATOR LAST
+CCI05=sapply(CCI04, function(x) (as.numeric(max(index(x$flag))-min(index(x$flag)))))
 
+#CALCULATE WHICH DAY REACH THE HIGHEST INDEX
+CCI06=sapply(CCI04, function(x) (which.max(abs(x))))
+
+#HOW MANY DAYS DOES IT TAKE TO REACH THE HIGHEST PRICE
+CCI07=numeric()
+for (j in (1:length(CCI04)))
+  {
+    #THE DATE DIFFERENCE BETWEEN HIGHEST VALUE DAY VS THE FRIST DAY
+  CCI07[j]=as.numeric(index(CCI04[[j]][CCI06[j]])-index(CCI04[[j]][1]))
+  }
+
+
+#  OPEN STRATEGY:WHEN CCI MOVE BELOW -100 OR ABOVE 100 THEN INVEST 25% on day1 , 25% on day 3, 25% on day 7
+# CLOSE STRATEGY:SELL 25% ON DAY 1, DAY 3 50%, DAY7 THE REST 25%. IF ONLY LAST FOR ONE DAY SELL ALL THE REST WHEN GO OVER -100 OR UNDER 100 
+
+
+InitialInvestment=100
+capital=numeric()
+capital[0]=InitialInvestment
+length(CCI03)
+for (k in (1:2))
+  {
+  OverallPosition=0
+  OverallReturnedCapital=0
+  CloseBalance=0
+    #TOTAL NUMBER OF DAYS IN THIS ROUND OF MOMENTUM
+      TradePositionOpenDayCount=max(index(CCI04[[k]]))-min(index(CCI04[[k]]))+1
+    #DEFINE TYPE OF TRADE
+      TradePositionType=ifelse(CCI04[[k]][1]$cci>0, "sell", "buy")
+  #IDENTIFY THE FIRST DAY
+      TradePositionOpenDate1=index(CCI04[[k]][1])
+      print(paste("TradePositionOpenDate1: ", TradePositionOpenDate1))
+      PositionQuantity1=InitialInvestment*0.25/SLVHist_02[index(SLVHist_02)==TradePositionOpenDate1]
+      OverallPosition=as.numeric(PositionQuantity1)+OverallPosition
+        
+    if (TradePositionOpenDayCount>=3) 
+      {
+      #FIND THE POSITION OF THE FIRST TRADE THEN DERIVE THE SECOND TRADE
+      TradePositionOpenDate2=index(SLVHist_02[which(index(SLVHist_02)==TradePositionOpenDate1)+2])
+      print(paste("TradePositionOpenDate2: ", TradePositionOpenDate2))
+      PositionQuantity2=InitialInvestment*0.5/SLVHist_02[index(SLVHist_02)==TradePositionOpenDate2]
+      OverallPosition=as.numeric(PositionQuantity2)+OverallPosition
+    } 
+      if (TradePositionOpenDayCount>=7) 
+      {
+        TradePositionOpenDate3=index(SLVHist_02[which(index(SLVHist_02)==TradePositionOpenDate1)+6])
+        print(paste("TradePositionOpenDate3: ", TradePositionOpenDate3))
+        PositionQuantity3=InitialInvestment*0.25/SLVHist_02[index(SLVHist_02)==TradePositionOpenDate3]
+        OverallPosition=as.numeric(PositionQuantity3)+OverallPosition
+      } 
+    
+#CLOSED POSITIONS
+
+        TradePositionCloseDayCount=max(index(CCI04[[k+1]]))-min(index(CCI04[[k+1]]))
+        TradePositionCloseDate1=index(CCI04[[k+1]][1])
+          print(paste("TradePositionCloseDate1: ", TradePositionCloseDate1))
+              if (TradePositionType=='buy')
+                  {ClosePositionBalanceDate1=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate1])*PositionQuantity1}
+              if (TradePositionType=='sell')
+                # WHEN THIS IS A SELL POSITION PROFIT=INITIAL INVESTMENT - CLOSED POSITION PRICE
+                # OVER BALANCE AFTER CLOSING POSITION=INITIAL INVESTMENT + (INITIAL INVESTMENT - CLOSED POSITION PRICE)
+                # OVER BALANCE AFTER CLOSING POSITION=INITIAL INVESTMENT * 2 - CLOSED POSITION PRICE
+                  {ClosePositionBalanceDate1=InitialInvestment*0.25*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate1])*PositionQuantity1)}
+        OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate1)
+    
+    # ONLY EXECUTE IF THE SECOND POSITION EXISTS
+    if (exists("PositionQuantity2"))
+    {
+        #IF THE MOMENTUM LAST MORE THAN 2 DAYS THEN CLOSE THE SECOND POSITION ON DAY 3
+        TradePositionCloseDate2=index(SLVHist_02[which(index(SLVHist_02)==TradePositionCloseDate1)+2])
+          print(paste("TradePositionCloseDate2: ", TradePositionCloseDate2))
+          if (TradePositionCloseDayCount>3)
+          {
+            #print("Rountine 1")
+            #CLOSE THE SECOND POSITION
+                if (TradePositionType=='buy')
+                    {ClosePositionBalanceDate2=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*PositionQuantity2}
+                if (TradePositionType=='sell')
+                    {ClosePositionBalanceDate2=InitialInvestment*0.5*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*PositionQuantity2)}
+            OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate2)
+           
+            # ONLY EXECUTE IF THE THIRD POSITION EXISTS 
+            if (exists("PositionQuantity3"))
+              {
+                TradePositionCloseDate3=index(SLVHist_02[which(index(SLVHist_02)==TradePositionCloseDate1)+6])
+                    print(paste("TradePositionCloseDate3: ", TradePositionCloseDate3))
+                #CLOSE THE THRID POSITION
+                    if (TradePositionType=='buy')
+                        {ClosePositionBalanceDate3=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate3])*PositionQuantity3}
+                    if (TradePositionType=='sell')
+                        {ClosePositionBalanceDate3=InitialInvestment*0.25*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate3])*PositionQuantity3)}
+                OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate3)
+              }
+          }
+        #OTHEREISE, WE SHOULD CLOSE ALL POSITION ON DAY 3
+          else
+            {
+              #print("Rountine 2")
+              #CLOSE SECOND AND THIRD POSITION TOGETHER
+                if (TradePositionType=='buy')
+                    {ClosePositionBalanceDate2=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*(OverallPosition-PositionQuantity1)}
+                if (TradePositionType=='sell')
+                    {ClosePositionBalanceDate2=InitialInvestment*0.75*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*(OverallPosition-PositionQuantity1))}
+
+              OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate2)
+            }
+    } 
+      
+      InitialInvestment=OverallReturnedCapital
+      capital[k]=InitialInvestment
+      print(k)
+      print(paste("InitialInvestment: ", InitialInvestment))
+      
+      if (exists("PositionQuantity1")) {rm(PositionQuantity1)}
+      if (exists("PositionQuantity2")) {rm(PositionQuantity2)}
+      if (exists("PositionQuantity3")) {rm(PositionQuantity3)}
+      
+}
+
+CCI03[63]
+
+plot(capital[65:200],type = "line")
+ 
