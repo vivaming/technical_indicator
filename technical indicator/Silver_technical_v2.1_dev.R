@@ -93,6 +93,9 @@ for (h in (1:length(StartDate)))
 #NUMBER OF DAYS AN OSCILLATOR CAN USUALLY LAST
 #FRIST OF ALL FILTER OUT THE NON-SIGNAL DAYS WHICH FLAG=0
 CCI04=lapply(CCI03, function(x) subset(x, !x$flag==0))
+#REMOVE BLANK LIST
+CCI04=CCI04[lapply(CCI04, length)>1]
+
 
 #CALCULATE THE DATE DIFFERENCE WHERE THE OSCILLATOR LAST
 CCI05=sapply(CCI04, function(x) (as.numeric(max(index(x$flag))-min(index(x$flag)))))
@@ -113,6 +116,12 @@ for (j in (1:length(CCI04)))
 # CLOSE STRATEGY:SELL 25% ON DAY 1, DAY 3 50%, DAY7 THE REST 25%. IF ONLY LAST FOR ONE DAY SELL ALL THE REST WHEN GO OVER -100 OR UNDER 100 
 
 
+# XTS FOR INVESTIGATION
+
+SLVHist_03=merge(SLVHist_02, SLVHist_02_CCI)
+SLVHist_03$BuyPosition=NA
+SLVHist_03$SellPosition=NA
+
 InitialInvestment=100
 capital=numeric()
 capital[0]=InitialInvestment
@@ -128,7 +137,22 @@ for (k in (1:2))
       TradePositionType=ifelse(CCI04[[k]][1]$cci>0, "sell", "buy")
   #IDENTIFY THE FIRST DAY
       TradePositionOpenDate1=index(CCI04[[k]][1])
+      #UPDATE INVESTIGATION LIST
+          if (TradePositionType=="buy")
+            {
+              SLVHist_03$BuyPosition=ifelse(index(SLVHist_03)==TradePositionOpenDate1, 
+                                            "TradePositionOpenDate1", 
+                                            SLVHist_03$BuyPosition)
+            }
+          else
+            {
+              SLVHist_03$SellPosition=ifelse(index(SLVHist_03)==TradePositionOpenDate1, 
+                                            "TradePositionOpenDate1", 
+                                            SLVHist_03$SellPosition)
+            }
       print(paste("TradePositionOpenDate1: ", TradePositionOpenDate1))
+      
+      ############## this might be the problem when there is a sell position
       PositionQuantity1=InitialInvestment*0.25/SLVHist_02[index(SLVHist_02)==TradePositionOpenDate1]
       OverallPosition=as.numeric(PositionQuantity1)+OverallPosition
         
@@ -136,6 +160,19 @@ for (k in (1:2))
       {
       #FIND THE POSITION OF THE FIRST TRADE THEN DERIVE THE SECOND TRADE
       TradePositionOpenDate2=index(SLVHist_02[which(index(SLVHist_02)==TradePositionOpenDate1)+2])
+      #UPDATE INVESTIGATION LIST
+      if (TradePositionType=="buy")
+      {
+        SLVHist_03$BuyPosition=ifelse(index(SLVHist_03)==TradePositionOpenDate2, 
+                                      "TradePositionOpenDate2", 
+                                      SLVHist_03$BuyPosition)
+      }
+      else
+      {
+        SLVHist_03$SellPosition=ifelse(index(SLVHist_03)==TradePositionOpenDate2, 
+                                       "TradePositionOpenDate2", 
+                                       SLVHist_03$SellPosition)
+      }
       print(paste("TradePositionOpenDate2: ", TradePositionOpenDate2))
       PositionQuantity2=InitialInvestment*0.5/SLVHist_02[index(SLVHist_02)==TradePositionOpenDate2]
       OverallPosition=as.numeric(PositionQuantity2)+OverallPosition
@@ -143,6 +180,19 @@ for (k in (1:2))
       if (TradePositionOpenDayCount>=7) 
       {
         TradePositionOpenDate3=index(SLVHist_02[which(index(SLVHist_02)==TradePositionOpenDate1)+6])
+        #UPDATE INVESTIGATION LIST
+        if (TradePositionType=="buy")
+        {
+          SLVHist_03$BuyPosition=ifelse(index(SLVHist_03)==TradePositionOpenDate3, 
+                                        "TradePositionOpenDate3", 
+                                        SLVHist_03$BuyPosition)
+        }
+        else
+        {
+          SLVHist_03$SellPosition=ifelse(index(SLVHist_03)==TradePositionOpenDate3, 
+                                         "TradePositionOpenDate3", 
+                                         SLVHist_03$SellPosition)
+        }
         print(paste("TradePositionOpenDate3: ", TradePositionOpenDate3))
         PositionQuantity3=InitialInvestment*0.25/SLVHist_02[index(SLVHist_02)==TradePositionOpenDate3]
         OverallPosition=as.numeric(PositionQuantity3)+OverallPosition
@@ -154,12 +204,23 @@ for (k in (1:2))
         TradePositionCloseDate1=index(CCI04[[k+1]][1])
           print(paste("TradePositionCloseDate1: ", TradePositionCloseDate1))
               if (TradePositionType=='buy')
-                  {ClosePositionBalanceDate1=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate1])*PositionQuantity1}
+                {
+                  ClosePositionBalanceDate1=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate1])*PositionQuantity1
+                  SLVHist_03$BuyPosition=ifelse(index(SLVHist_03)==TradePositionCloseDate1, 
+                                                "TradePositionCloseDate1", 
+                                                SLVHist_03$BuyPosition)
+                }
+          
+            # WHEN THIS IS A SELL POSITION PROFIT=INITIAL INVESTMENT - CLOSED POSITION PRICE
+            # OVER BALANCE AFTER CLOSING POSITION=INITIAL INVESTMENT + (INITIAL INVESTMENT - CLOSED POSITION PRICE)
+            # OVER BALANCE AFTER CLOSING POSITION=INITIAL INVESTMENT * 2 - CLOSED POSITION PRICE          
               if (TradePositionType=='sell')
-                # WHEN THIS IS A SELL POSITION PROFIT=INITIAL INVESTMENT - CLOSED POSITION PRICE
-                # OVER BALANCE AFTER CLOSING POSITION=INITIAL INVESTMENT + (INITIAL INVESTMENT - CLOSED POSITION PRICE)
-                # OVER BALANCE AFTER CLOSING POSITION=INITIAL INVESTMENT * 2 - CLOSED POSITION PRICE
-                  {ClosePositionBalanceDate1=InitialInvestment*0.25*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate1])*PositionQuantity1)}
+                {
+                  ClosePositionBalanceDate1=InitialInvestment*0.25*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate1])*PositionQuantity1)
+                  SLVHist_03$SellPosition=ifelse(index(SLVHist_03)==TradePositionCloseDate1, 
+                                                "TradePositionCloseDate1", 
+                                                SLVHist_03$SellPosition)
+                }
         OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate1)
     
     # ONLY EXECUTE IF THE SECOND POSITION EXISTS
@@ -173,9 +234,19 @@ for (k in (1:2))
             #print("Rountine 1")
             #CLOSE THE SECOND POSITION
                 if (TradePositionType=='buy')
-                    {ClosePositionBalanceDate2=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*PositionQuantity2}
+                  {
+                    ClosePositionBalanceDate2=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*PositionQuantity2
+                    SLVHist_03$BuyPosition=ifelse(index(SLVHist_03)==TradePositionCloseDate2, 
+                                                "TradePositionCloseDate2", 
+                                                SLVHist_03$BuyPosition)
+                    }
                 if (TradePositionType=='sell')
-                    {ClosePositionBalanceDate2=InitialInvestment*0.5*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*PositionQuantity2)}
+                  {
+                    ClosePositionBalanceDate2=InitialInvestment*0.5*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate2])*PositionQuantity2)
+                    SLVHist_03$SellPosition=ifelse(index(SLVHist_03)==TradePositionCloseDate2, 
+                                                  "TradePositionCloseDate2", 
+                                                  SLVHist_03$SellPosition)
+                  }
             OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate2)
            
             # ONLY EXECUTE IF THE THIRD POSITION EXISTS 
@@ -185,9 +256,19 @@ for (k in (1:2))
                     print(paste("TradePositionCloseDate3: ", TradePositionCloseDate3))
                 #CLOSE THE THRID POSITION
                     if (TradePositionType=='buy')
-                        {ClosePositionBalanceDate3=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate3])*PositionQuantity3}
+                        {
+                          ClosePositionBalanceDate3=as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate3])*PositionQuantity3
+                          SLVHist_03$BuyPosition=ifelse(index(SLVHist_03)==TradePositionCloseDate3, 
+                                                      "TradePositionCloseDate3", 
+                                                      SLVHist_03$BuyPosition)
+                        }
                     if (TradePositionType=='sell')
-                        {ClosePositionBalanceDate3=InitialInvestment*0.25*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate3])*PositionQuantity3)}
+                        {
+                            ClosePositionBalanceDate3=InitialInvestment*0.25*2-(as.numeric(SLVHist_02[index(SLVHist_02)==TradePositionCloseDate3])*PositionQuantity3)
+                            SLVHist_03$SellPosition=ifelse(index(SLVHist_03)==TradePositionCloseDate3, 
+                                                          "TradePositionCloseDate3", 
+                                                          SLVHist_03$SellPosition)
+                        }
                 OverallReturnedCapital=OverallReturnedCapital+as.numeric(ClosePositionBalanceDate3)
               }
           }
@@ -205,18 +286,22 @@ for (k in (1:2))
             }
     } 
       
+      
+      
       InitialInvestment=OverallReturnedCapital
       capital[k]=InitialInvestment
       print(k)
       print(paste("InitialInvestment: ", InitialInvestment))
       
-      if (exists("PositionQuantity1")) {rm(PositionQuantity1)}
-      if (exists("PositionQuantity2")) {rm(PositionQuantity2)}
-      if (exists("PositionQuantity3")) {rm(PositionQuantity3)}
+      # if (exists("PositionQuantity1")) {rm(PositionQuantity1)}
+      # if (exists("PositionQuantity2")) {rm(PositionQuantity2)}
+      # if (exists("PositionQuantity3")) {rm(PositionQuantity3)}
       
 }
 
-CCI03[63]
 
-plot(capital[65:200],type = "line")
- 
+
+test=data.frame(date=index(SLVHist_03[!is.na(SLVHist_03$BuyPosition), ]), SLVHist_03[!is.na(SLVHist_03$BuyPosition), ])
+write.csv(test, "/Users/mingzhang/desktop/test.csv")
+
+capital[1:100]
