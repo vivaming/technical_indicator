@@ -1,11 +1,12 @@
 library(Quandl)
 library(tensorflow)
 library(keras)
+library(ggplot2)
 
 TimeSeriesStartDate='1985-11-20'
 
 #INDUSTRY PRODUCTION
-IndustrialProduction=Quandl("FRED/INDPRO", type='xts')
+IndustrialProduction=Quandl("FRED/INDPRO", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(IndustrialProduction)="IndustrialProduction"
 
 #US GDP GROWTH RATE
@@ -17,7 +18,7 @@ FEDRate=Quandl("FED/RIFSPFF_N_D", api_key="GixSX89oiCWDRyS3B-Dy", type = 'xts')
 names(FEDRate)="FEDRate"
 
 #US CPI
-USCPI=Quandl("RATEINF/CPI_USA", type='xts')
+USCPI=Quandl("RATEINF/CPI_USA", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(USCPI)='USCPI'
 
 #US DURABLE GOOD
@@ -64,8 +65,9 @@ names(EURUSD)=c('EURUSD', 'EURUSDHLV')
 
 
 #SILVER
-SLV=Quandl("LBMA/SILVER", type='xts')[,1]
+SLV=Quandl("LBMA/SILVER", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')[,1]
 names(SLV)="SLV"
+
 
 data=merge(SLV, 
            USDollarIndex, 
@@ -174,7 +176,9 @@ val_steps <- (8000 - 7001 - lookback) / batch_size
 test_steps <- (nrow(data03) - 8001 - lookback) / batch_size
 
 
-
+## THE MATRIX NEEDS TO BE REBUILT
+# READ THIS 
+# https://machinelearningmastery.com/reshape-input-data-long-short-term-memory-networks-keras/
 
 model_01=keras_model_sequential() %>%
   layer_gru(units = 32,
@@ -211,9 +215,158 @@ history_01 = model_01 %>% fit_generator(
 ModelPred_01=predict(model_01, test_gen()[[1]])
 ModelOutput_01=data.frame(Pred=ModelPred_01, 
                           Actual=test_gen()[[2]], 
-                          Date=seq(as.Date("2018-01-01"), by="1 day", length.out=xxx))
-library(ggplot2)
+                          Date=seq(as.Date("2018-01-01"), by="1 day", length.out=dim(test_gen()[[2]])))
+
 
 ggplot(ModelOutput_01, aes(Date)) + 
   geom_line(aes(y = Pred, colour = "Pred")) + 
   geom_line(aes(y = Actual, colour = "Actual"))
+
+
+
+#---------------------------------------------------------------------------------------------- model 2
+
+
+
+model_02=keras_model_sequential() %>%
+  layer_gru(units = 16,
+            activation = 'relu', 
+            dropout = 0.1,
+            recurrent_dropout = 0.3,
+            return_sequences = TRUE,
+            input_shape = list(NULL, dim(data03)[[-1]])) %>%
+  layer_gru(unit = 8, 
+            activation = 'relu',
+            dropout= 0.1,
+            recurrent_dropout = 0.3) %>%
+  layer_dense(units = 1)
+
+model_02 %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = 'mae'
+)
+
+
+
+history_02 = model_02 %>% fit_generator(
+  callbacks = callback_model_checkpoint("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_02/model_01.{epoch:02d}-{val_loss:.2f}.hdf5",
+                                        monitor = 'val_loss',
+                                        save_best_only = FALSE),
+  train_gen,
+  steps_per_epoch = 200,
+  epochs = 15,
+  validation_data = val_gen,
+  validation_steps = val_steps
+)
+
+plot(history_02)
+
+model_02=load_model_hdf5("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_02/model_01.02-0.28.hdf5")
+
+
+
+ModelPred_02=predict(model_02, test_gen()[[1]])
+ModelOutput_02=data.frame(Pred=ModelPred_02, 
+                          Actual=test_gen()[[2]], 
+                          Date=seq(as.Date("2018-01-01"), by="1 day", length.out=dim(test_gen()[[2]])))
+library(ggplot2)
+
+ggplot(ModelOutput_02, aes(Date)) + 
+  geom_line(aes(y = Pred, colour = "Pred")) + 
+  geom_line(aes(y = Actual, colour = "Actual"))
+
+
+
+#---------------------------------------------------------------------------------------------- model 3
+
+
+
+model_03=keras_model_sequential() %>%
+  layer_gru(units = 8,
+            activation = 'relu', 
+            dropout = 0.2,
+            recurrent_dropout = 0.3,
+            return_sequences = TRUE,
+            input_shape = list(NULL, dim(data03)[[-1]])) %>%
+  layer_gru(unit = 8, 
+           activation = 'relu',
+            dropout= 0.2,
+            recurrent_dropout = 0.3,
+            return_sequences = TRUE) %>%
+  layer_gru(unit = 8, 
+            activation = 'relu',
+            dropout= 0.2,
+            recurrent_dropout = 0.3) %>%
+  layer_dense(units = 1)
+
+model_03 %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = 'mae'
+)
+
+
+
+history_03 = model_03 %>% fit_generator(
+  callbacks = callback_model_checkpoint("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_03/model_03.{epoch:02d}-{val_loss:.2f}.hdf5",
+                                        monitor = 'val_loss',
+                                        save_best_only = FALSE),
+  train_gen,
+  steps_per_epoch = 500,
+  epochs = 40,
+  validation_data = val_gen,
+  validation_steps = val_steps
+)
+
+plot(history_03)
+
+model_03=load_model_hdf5("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_03/model_03.33-0.27.hdf5")
+ModelPred_03=predict(model_03, test_gen()[[1]])
+ModelOutput_03=data.frame(Pred=ModelPred_03, 
+                          Actual=test_gen()[[2]], 
+                          Date=seq(as.Date("2018-01-01"), by="1 day", length.out=dim(test_gen()[[2]])))
+
+ggplot(ModelOutput_03, aes(Date)) +
+  geom_line(aes(y=Pred, colour="Pred")) +
+  geom_line(aes(y=Actual, colour="Actual"))
+
+
+#---------------------------------------------------------------------------------------------- model 3
+
+
+
+model_04=keras_model_sequential() %>%
+  layer_gru(units = 16,
+            activation = 'relu', 
+            dropout = 0.2,
+            recurrent_dropout = 0.3,
+            return_sequences = TRUE,
+            input_shape = list(NULL, dim(data03)[[-1]])) %>%
+  layer_gru(unit = 16, 
+            activation = 'relu',
+            dropout= 0.2,
+            recurrent_dropout = 0.3,
+            return_sequences = TRUE) %>%
+  layer_gru(unit = 8, 
+            activation = 'relu',
+            dropout= 0.2,
+            recurrent_dropout = 0.3) %>%
+  layer_dense(units = 1)
+
+model_04 %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = 'mae'
+)
+
+
+
+history_04 = model_04 %>% fit_generator(
+  callbacks = callback_model_checkpoint("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_04/model_04.{epoch:02d}-{val_loss:.2f}.hdf5",
+                                        monitor = 'val_loss',
+                                        save_best_only = FALSE),
+  train_gen,
+  steps_per_epoch = 500,
+  epochs = 40,
+  validation_data = val_gen,
+  validation_steps = val_steps
+)
+
