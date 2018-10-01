@@ -3,52 +3,114 @@ library(tensorflow)
 library(keras)
 library(ggplot2)
 library(dplyr)
+library(quantmod)
+library(tidyverse)
+library(tidyquant)
+
+options(scipen=999)
 
 TimeSeriesStartDate='1985-11-20'
 
 #INDUSTRY PRODUCTION
+
 IndustrialProduction=Quandl("FRED/INDPRO", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(IndustrialProduction)="IndustrialProduction"
+#CONVERT TO RELEASE DATE
+index(IndustrialProduction)=as.Date(index(IndustrialProduction))+45
+
 
 #US GDP GROWTH RATE
 USGDP=Quandl("FRED/Y695RY2Q224SBEA", api_key="GixSX89oiCWDRyS3B-Dy",type = 'xts')
 names(USGDP)="USGDP"
+#CONVERT TO RELEASE DATE
+index(USGDP)=as.Date(index(USGDP))+115
 
 #FED FUND RATE DAILY
 FEDRate=Quandl("FED/RIFSPFF_N_D", api_key="GixSX89oiCWDRyS3B-Dy", type = 'xts')
 names(FEDRate)="FEDRate"
 
+
 #US CPI
 USCPI=Quandl("RATEINF/CPI_USA", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(USCPI)='USCPI'
+#CONVERT TO RELEASE DATE
+index(USCPI)=as.Date(index(USCPI))+42
+
 
 #US DURABLE GOOD
 USDurable=Quandl("FRED/DGORDER", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(USDurable)="USDurable"
+#CONVERT TO RELEASE DATE
+index(USDurable)=as.Date(index(USDurable))+54
+
 
 #OECD US CONSUMER CONFIDENCE
-USCConfidence=Quandl("OECD/KEI_CSCICP02_USA_ST_M", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
+USCConfidence=Quandl("OECD/KEI_CSCICP02_USA_ST_M", api_key="GixSX89oiCWDRyS3B-Dy")
 names(USCConfidence)='USCConfidence'
+#CONVERT TO RELEASE DATE
+USCConfidence=xts(USCConfidence[, -1], order.by=(USCConfidence[,1]))
+index(USCConfidence)=index(USCConfidence)+29
+
 
 #US NONFARM PAYROLLS
 USNonFarm=Quandl("FRED/PAYEMS", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(USNonFarm)='USNonFarm'
+#CONVERT TO RELEASE DATE
+index(USNonFarm)=as.Date(index(USNonFarm))+54
+
 
 #US PHILADELPHIA FED MANUFACTURING INDEX
-USPhillyFEDManIndex=Quandl("FRBP/GAC", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
+USPhillyFEDManIndex=Quandl("FRBP/GAC", api_key="GixSX89oiCWDRyS3B-Dy")
 names(USPhillyFEDManIndex)='USPhillyFEDManIndex'
+#REMOVE THE ACTUAL DUPLICATE IN EACH MONTH
+USPhillyFEDManIndex=USPhillyFEDManIndex[format(USPhillyFEDManIndex[,1], "%d")=='01',]
+USPhillyFEDManIndex=xts(USPhillyFEDManIndex[, -1], order.by = (USPhillyFEDManIndex[, 1]))
+#CONVERT TO RELEASE DATE
+index(USPhillyFEDManIndex)=as.Date(index(USPhillyFEDManIndex))+54
+
 
 #US INITIAL JOBLESS CLAIM
 USInitialJobless=Quandl("FRED/ICSA", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
 names(USInitialJobless)='USInitialJobless'
+#CONVERT TO RELEASE DATE
+index(USInitialJobless)=as.Date(index(USInitialJobless))-2
 
-#US HOUSE PRICE INDEX
-USHPI=Quandl("FMAC/HPI_USA", api_key="GixSX89oiCWDRyS3B-Dy", type = 'xts')
+#US FEDHOUSE PRICE INDEX
+USHPI=Quandl("FRED/USSTHPI", api_key="GixSX89oiCWDRyS3B-Dy", type = 'xts')
 names(USHPI)='USHPI'
+index(USHPI)=as.Date(index(USHPI))+144
+
+
+#US M2 MONEY SUPPLY
+USM2=Quandl("FED/M2_M", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
+USM2=Delt(USM2, type=c('arithmetic'))
+names(USM2)='USM2'
+index(USM2)=as.Date(index(USM2))+55
+#ggplot(data = USM2[650:dim(USM2)[1]] , aes(x=Index, y=USM2)) + geom_line()+theme_tq()
+
+
 
 #US DOLLAR
 USDollarIndex=Quandl("CHRIS/ICE_DX1", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')[, c(4,7)]
 names(USDollarIndex)=c('USDollarIndex', 'USDollarIndexVol')
+
+#FRED US DOLLAR INDEX
+FedUSIndex=Quandl("FRED/DTWEXM", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')
+#USE FRED US DOLLAR INDEX TO BACKFILL THE ORIGINAL US DOLLAR FUTURE BETWEEN 02/01/1973 AND 19/11/1985
+#ESITMATED DIFFERENCE BETWEEN THESE TWO INDEX IS APPROXIMATELY 1.05
+
+USDollarIndexBackfill=FedUSIndex["/1985-11-19"]*1.05
+colnames(USDollarIndexBackfill)='USDollarIndex'
+USDollarIndexBackfill$USDollarIndexVol=rep(list(0), length(USDollarIndexBackfill))
+
+USDollarIndex=rbind(USDollarIndexBackfill, USDollarIndex)
+
+
+
+# US 2, 10, 30 YEARS TREASURY BOND RATE
+USTreasury02Y=Quandl("FRED/DGS2", api_key="GixSX89oiCWDRyS3B-Dy", tyoe='xts')
+USTreasury10Y=Quandl("FRED/DGS10", api_key="GixSX89oiCWDRyS3B-Dy", tyoe='xts')
+USTreasury30Y=Quandl("FRED/DGS30", api_key="GixSX89oiCWDRyS3B-Dy", tyoe='xts')
 
 library(quantmod)
 #S&P 500
@@ -57,6 +119,8 @@ SP500=GSPC[, c(4,5)]
 SP500$SP500HLV=GSPC[,2]-GSPC[,1]
 names(SP500)=c('SP500', 'SP500VOL', 'SP500HLV')
 
+#NASDAQ
+getSymbols('^IXIC', src = "yahoo", from=as.Date('1900-01-01'))
 
 #EURUSD
 getSymbols("EURUSD=X", from=as.Date('1900-01-01'))
@@ -172,7 +236,7 @@ TestY=test02[[2]]
 
 FLAGS <- flags(
   flag_boolean("stateful", FALSE),
-  flag_boolean("stack_layers", FALSE),
+  flag_boolean("stack_layers", TRUE),
   # number of samples fed to the model in one go
   flag_integer("batch_size", 28),
   # size of the hidden state, equals size of predictions
@@ -180,22 +244,23 @@ FLAGS <- flags(
   # how many epochs to train for
   flag_integer("n_epochs", 100),
   # fraction of the units to drop for the linear transformation of the inputs
-  # flag_numeric("dropout", 0.2),
+  flag_numeric("dropout", 0.1),
   # fraction of the units to drop for the linear transformation of the 
   # recurrent state
-  # flag_numeric("recurrent_dropout", 0.2),
+  flag_numeric("recurrent_dropout", 0.2),
   # loss function. Found to work better for this specific case than mean
   # squared error
-  flag_string("loss", "logcosh"),
+  flag_string("loss", "mae"),
   # optimizer = stochastic gradient descent. Seemed to work better than adam 
   # or rmsprop here (as indicated by limited testing)
-  flag_string("optimizer_type", "sgd"),
+  flag_string("optimizer_type", "rmsprop"),
   # size of the LSTM layer
-  flag_integer("n_units", 64),
+  flag_integer("n_units_1", 64),
+  flag_integer("n_units_2", 32),
   # learning rate
-  flag_numeric("lr", 0.003),
+  flag_numeric("lr", 0.001),
   # momentum, an additional parameter to the SGD optimizer
-  flag_numeric("momentum", 0.9),
+  flag_numeric("momentum", 0.2),
   # parameter to the early stopping callback
   flag_integer("patience", 10)
 )
@@ -206,9 +271,11 @@ n_predictions <- FLAGS$n_timesteps
 # how many features = predictors we have
 n_features <- 17
 # just in case we wanted to try different optimizers, we could add here
-optimizer <- switch(FLAGS$optimizer_type,
-                    sgd = optimizer_sgd(lr = FLAGS$lr, 
-                                        momentum = FLAGS$momentum)
+# optimizer <- switch(FLAGS$optimizer_type,
+#                     sgd = optimizer_sgd(lr = FLAGS$lr, 
+#                                         momentum = FLAGS$momentum)
+
+optimizer=optimizer_rmsprop()
 )
 
 # callbacks to be passed to the fit() function
@@ -227,7 +294,7 @@ model <- keras_model_sequential()
 # we have just two, the LSTM and the time_distributed 
 model %>%
   layer_lstm(
-    units = FLAGS$n_units, 
+    units = FLAGS$n_units_1, 
     # the first layer in a model needs to know the shape of the input data
     #batch_input_shape  = c(FLAGS$batch_size, FLAGS$n_timesteps, n_features),
     input_shape = list(NULL, 17),
@@ -235,7 +302,16 @@ model %>%
     recurrent_dropout = FLAGS$recurrent_dropout,
     # by default, an LSTM just returns the final state
     return_sequences = TRUE
-  ) %>% time_distributed(layer_dense(units = 1))
+  ) %>%
+layer_lstm(
+  units = FLAGS$n_units_2, 
+  #input_shape = list(NULL, 17),
+  dropout = FLAGS$dropout,
+  recurrent_dropout = FLAGS$recurrent_dropout,
+  # by default, an LSTM just returns the final state
+  return_sequences = TRUE
+) %>% 
+  time_distributed(layer_dense(units = 1))
 
 model %>%
   compile(
@@ -257,7 +333,7 @@ history <- model %>% fit(
                                         save_best_only = FALSE)
 )
 
-model=load_model_hdf5("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_05/model_05.09-0.05.hdf5")
+model=load_model_hdf5("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_05/model_05.04-0.19.hdf5")
 
 pred_test <- model %>%
   predict(TestX, batch_size = 1) %>%

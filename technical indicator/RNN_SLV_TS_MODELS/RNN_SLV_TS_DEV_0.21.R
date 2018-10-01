@@ -172,7 +172,7 @@ TestY=test02[[2]]
 
 FLAGS <- flags(
   flag_boolean("stateful", FALSE),
-  flag_boolean("stack_layers", FALSE),
+  flag_boolean("stack_layers", TRUE),
   # number of samples fed to the model in one go
   flag_integer("batch_size", 28),
   # size of the hidden state, equals size of predictions
@@ -180,22 +180,23 @@ FLAGS <- flags(
   # how many epochs to train for
   flag_integer("n_epochs", 100),
   # fraction of the units to drop for the linear transformation of the inputs
-  # flag_numeric("dropout", 0.2),
+  flag_numeric("dropout", 0.1),
   # fraction of the units to drop for the linear transformation of the 
   # recurrent state
-  # flag_numeric("recurrent_dropout", 0.2),
+  flag_numeric("recurrent_dropout", 0.2),
   # loss function. Found to work better for this specific case than mean
   # squared error
-  flag_string("loss", "logcosh"),
+  flag_string("loss", "mae"),
   # optimizer = stochastic gradient descent. Seemed to work better than adam 
   # or rmsprop here (as indicated by limited testing)
-  flag_string("optimizer_type", "sgd"),
+  flag_string("optimizer_type", "rmsprop"),
   # size of the LSTM layer
-  flag_integer("n_units", 64),
+  flag_integer("n_units_1", 64),
+  flag_integer("n_units_2", 32),
   # learning rate
-  flag_numeric("lr", 0.003),
+  flag_numeric("lr", 0.001),
   # momentum, an additional parameter to the SGD optimizer
-  flag_numeric("momentum", 0.9),
+  flag_numeric("momentum", 0.2),
   # parameter to the early stopping callback
   flag_integer("patience", 10)
 )
@@ -206,9 +207,11 @@ n_predictions <- FLAGS$n_timesteps
 # how many features = predictors we have
 n_features <- 17
 # just in case we wanted to try different optimizers, we could add here
-optimizer <- switch(FLAGS$optimizer_type,
-                    sgd = optimizer_sgd(lr = FLAGS$lr, 
-                                        momentum = FLAGS$momentum)
+# optimizer <- switch(FLAGS$optimizer_type,
+#                     sgd = optimizer_sgd(lr = FLAGS$lr, 
+#                                         momentum = FLAGS$momentum)
+
+optimizer=optimizer_rmsprop()
 )
 
 # callbacks to be passed to the fit() function
@@ -227,7 +230,7 @@ model <- keras_model_sequential()
 # we have just two, the LSTM and the time_distributed 
 model %>%
   layer_lstm(
-    units = FLAGS$n_units, 
+    units = FLAGS$n_units_1, 
     # the first layer in a model needs to know the shape of the input data
     #batch_input_shape  = c(FLAGS$batch_size, FLAGS$n_timesteps, n_features),
     input_shape = list(NULL, 17),
@@ -235,7 +238,16 @@ model %>%
     recurrent_dropout = FLAGS$recurrent_dropout,
     # by default, an LSTM just returns the final state
     return_sequences = TRUE
-  ) %>% time_distributed(layer_dense(units = 1))
+  ) %>%
+layer_lstm(
+  units = FLAGS$n_units_2, 
+  #input_shape = list(NULL, 17),
+  dropout = FLAGS$dropout,
+  recurrent_dropout = FLAGS$recurrent_dropout,
+  # by default, an LSTM just returns the final state
+  return_sequences = TRUE
+) %>% 
+  time_distributed(layer_dense(units = 1))
 
 model %>%
   compile(
@@ -257,7 +269,7 @@ history <- model %>% fit(
                                         save_best_only = FALSE)
 )
 
-model=load_model_hdf5("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_05/model_05.09-0.05.hdf5")
+model=load_model_hdf5("/Users/mingzhang/Documents/R/dev/technical_indicator/technical indicator/RNN_SLV_TS_MODELS/MODEL_05/model_05.04-0.19.hdf5")
 
 pred_test <- model %>%
   predict(TestX, batch_size = 1) %>%
