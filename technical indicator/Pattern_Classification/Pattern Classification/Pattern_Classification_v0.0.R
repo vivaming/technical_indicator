@@ -37,16 +37,15 @@ FillDateGaps=function(TS, locf=TRUE)
 
 CutOffLookBack=function(TS, CutOffDate, LookBackDays=6, ColnamePrefix) {
   
-  #TS=data_01[, 1]
-  # TS=USTreasury30Y
-  # LookBackDays=30
-  # ColnamePrefix='USTreasury10Y'
-  # CutOffDate="1973-05-21"
-  
+  # TS=USHPI
+  # LookBackDays=6
+  # ColnamePrefix='USHPI'
+  # CutOffDate="1975-05-27"
+
   CutOffDate=as.Date(CutOffDate)
   CutOffDateIndexStart=max(which(index(TS)<=CutOffDate))
   CutOffDateIndexEnd=CutOffDateIndexStart-LookBackDays+1
-  if (is.infinite(CutOffDateIndexStart)) {
+  if (is.infinite(CutOffDateIndexStart)|CutOffDateIndexStart<LookBackDays) {
     LookBackOutput=data.frame(t(rep(0, LookBackDays)))
   } else
   {
@@ -247,7 +246,7 @@ data_01=data_01[index(data_01)>=TimeSeriesStartDate, ]
 data_01=data_01[!is.na(data_01[, 1]),]
 
 #DEFINE NUMBER OF LOOPS
-RecordCount=floor((dim(data_01)[1]-90)/15)
+RecordCount=floor((dim(data_01)[1]-90)/7)
 
 
 
@@ -255,7 +254,7 @@ SliceCollection=data.frame()
 
 for (h in (1:RecordCount)) {
 
-CutOffDate=index(data_01[90+15*(h-1), ])
+CutOffDate=index(data_01[90+7*(h-1), ])
 
 print(paste0("h: ", h))
 print(paste0("CutOffDate: ", CutOffDate))
