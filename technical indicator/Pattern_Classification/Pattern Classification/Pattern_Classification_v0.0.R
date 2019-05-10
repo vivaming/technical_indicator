@@ -13,6 +13,7 @@ library(randomForest)
 
 
 options(scipen=999)
+options(max.print = 3000)
 
 
 FillDateGaps=function(TS, locf=TRUE)
@@ -37,10 +38,10 @@ FillDateGaps=function(TS, locf=TRUE)
 
 CutOffLookBack=function(TS, CutOffDate, LookBackDays=6, ColnamePrefix) {
   
-  # TS=USHPI
+  # TS=data_01[, 3]
   # LookBackDays=6
-  # ColnamePrefix='USHPI'
-  # CutOffDate="1975-05-27"
+  # ColnamePrefix='USIndexVol'
+  # CutOffDate="2008-05-27"
 
   CutOffDate=as.Date(CutOffDate)
   CutOffDateIndexStart=max(which(index(TS)<=CutOffDate))
@@ -236,25 +237,61 @@ index(ChinaM2)=as.Date(index(ChinaM2))+41
 #SILVER
 SLV=Quandl("LBMA/SILVER", api_key="GixSX89oiCWDRyS3B-Dy", type='xts')[,1]
 names(SLV)="SLV"
+SLV=na.locf(SLV, fromNext = TRUE)
+SLVRSI=RSI(SLV, n = 16)
+names(SLVRSI)='SLVRSI'
+SLVCCI=CCI(SLV,n=20, c=0.015)
+names(SLVCCI)='SLVCCI'
 
 
-data_01=merge(SLV, USDollarIndex, NASDAQ, EURUSD,
+data_01=merge(SLV, USDollarIndex, NASDAQ, EURUSD, SLVRSI, SLVCCI,
               all=TRUE)
+
+for (i in (2:dim(data_01)[2]))
+{
+  data_01[,i]=na.locf(data_01[,i], fromNext = TRUE)
+}
 
 #REMVOE THE EXTRA HISTORY DATA
 data_01=data_01[index(data_01)>=TimeSeriesStartDate, ]
 data_01=data_01[!is.na(data_01[, 1]),]
 
-#DEFINE NUMBER OF LOOPS
-RecordCount=floor((dim(data_01)[1]-90)/7)
 
+
+#DEFINE NUMBER OF LOOPS
+RecordCount=floor((dim(data_01)[1]-90)/10)
 
 
 SliceCollection=data.frame()
 
 for (h in (1:RecordCount)) {
 
-CutOffDate=index(data_01[90+7*(h-1), ])
+CutOffDate=index(data_01[90+10*(h-1), ])
+
+#PRICES IN NEXT 14 DAYS
+
+FuturePrices=SLV[paste0(CutOffDate+1, "::", CutOffDate+14)]
+PresentPrice=SLV[CutOffDate]
+
+#HIGHEST PRICE IN THE FUTURE DAYS THEN CALCULATE THE RETURN
+if (PresentPrice==0) {
+  BestReturn=0 }
+else {
+  BestReturn=(max(FuturePrices)-PresentPrice)/PresentPrice
+}
+BestFuturePriceDate=index(FuturePrices[which(FuturePrices==max(FuturePrices))])[1]
+
+
+#CHECK IF THE RETURN IS GREATER THAN TARGET RETURN -- 2% IN THIS CASE
+TargetReturnFlag=data.frame(TargetReturnFlag=ifelse(BestReturn>=0.035, 1, 0)
+                            , CutOffDate=CutOffDate
+                            , PresentPrice=PresentPrice
+                            , BestReturn=BestReturn
+                            , BestFuturePrice=max(FuturePrices)
+                            , BestFuturePriceDate=BestFuturePriceDate)
+
+colnames(TargetReturnFlag)=c('TargetReturnFlag', 'CutOffDate', 'PresentPrice', 'BestReturn', 'BestFuturePrice', 'BestFuturePriceDate')
+
 
 print(paste0("h: ", h))
 print(paste0("CutOffDate: ", CutOffDate))
@@ -277,6 +314,21 @@ SLVSlice$SLV_Lag40=as.numeric(data_01[SLVLookBack$CutOffDateIndex-39, 1])
 SLVSlice$SLV_Lag50=as.numeric(data_01[SLVLookBack$CutOffDateIndex-49, 1])
 SLVSlice$SLV_Lag60=as.numeric(data_01[SLVLookBack$CutOffDateIndex-59, 1])
 SLVSlice$SLV_Lag90=as.numeric(data_01[SLVLookBack$CutOffDateIndex-89, 1])
+
+print("SLVRSI")
+SLVRSILookBack=CutOffLookBack(data_01[,8]
+                           , CutOffDate=CutOffDate
+                           , LookBackDays = 30
+                           , ColnamePrefix = 'SLVRSI')
+SLVRSISlice=SLVRSILookBack$LookBackOutput
+
+print("SLVCCI")
+SLVCCILookBack=CutOffLookBack(data_01[,9]
+                           , CutOffDate=CutOffDate
+                           , LookBackDays = 30
+                           , ColnamePrefix = 'SLVCCI')
+SLVCCISlice=SLVCCILookBack$LookBackOutput
+
 
 print("USIndex")
 USIndexLookBack=CutOffLookBack(data_01[, 2]
@@ -390,9 +442,12 @@ USHPILookBack=CutOffLookBack(USHPI
                           , ColnamePrefix = 'USHPI')
 USHPISlice=USHPILookBack$LookBackOutput
 
-DataSlice=cbind(SLVSlice
+DataSlice=cbind(TargetReturnFlag
+                , SLVSlice
+                # , SLVRSISlice
+                # , SLVCCISlice
                 , USIndexSlice
-                , USIndexVOLSlice
+                , USIndexVolSlice
                 , NASDAQSlice
                 , NASDAQVolSlice
                 , USTreasury10YSlice
@@ -408,23 +463,243 @@ rownames(DataSlice)=CutOffDate
 
 SliceCollection=rbind(SliceCollection, DataSlice)             
 }
-#START FROM 90 DAYS AND MOVE FORWARD EVERY 15 DAYS
+
+#DROP THE EXTRA COLUMNS
+
+data_02=SliceCollection[, !colnames(SliceCollection) %in% c("PresentPrice", "BestReturn", "BestFuturePrice", "BestFuturePriceDate")]
+
+# sum(data_02$TargetReturnFlag)
+# length(data_02$TargetReturnFlag)
+
+data_02_Positive=data_02[data_02$TargetReturnFlag==1, ]
+#RANDOM SAMPLING THE NEGATIVE OUTCOMES
+data_02_Negative=data_02[data_02$TargetReturnFlag==0, ]
+data_02_NegativeSample=data_02_Negative[sample(nrow(data_02_Negative), dim(data_02_Positive)[1]), ] 
+
+data_03=rbind(data_02_Positive, data_02_NegativeSample)
 
 
-# USDollarIndex        100.000
-# USTreasury10Y        100.000
-# USCPI                 56.514
-# FEDRate               48.957
-# IndustrialProduction  33.458
-# EURUSD                30.498
-# USNonFarm             25.946
-# USHPI                 14.608
-# USTreasury30Y         11.971
-# NASDAQ                 9.246
+#STANDARDISE THE MATRIX
+mean=apply(data_03[, -(1:2)], 2, function(x) (mean(x[!x==0])))
+SD=apply(data_03[, -(1:2)], 2, function(x) (sd(x[!x==0])))
+
+data_04=scale(data_03[, -(1:2)], center=mean, scale=SD)
+
+
+
+# data_04_pccomp=prcomp(data_04, scale = FALSE)
+# library(factoextra)
+# fviz_eig(data_04_pccomp, ncp = 20)
+# 
+# data_04=predict(data_04_pccomp, data_04)[, 1:20]
+
+
+data_04=cbind(data_03[, (1:2)], data_04)
+data_04$TargetReturnFlag=as.factor(ifelse(data_04$TargetReturnFlag==1, 'Yes', 'No'))
+
+# test_01=data_04[data_04$CutOffDate>=as.Date('2016-01-01'), ]
+ #write.csv(test_01, "/Users/mingzhang/Downloads/test.csv")
+
+Testing=data_04[data_04$CutOffDate>=as.Date('2016-01-01'), -2]
+Training=data_04[data_04$CutOffDate<as.Date('2016-01-01'), -2]
+
+
+Ctrl <- trainControl(method = "cv"
+                     #, number = 10
+                     , summaryFunction = twoClassSummary
+                     , classProbs = TRUE,
+                     , savePredictions = TRUE
+                     , verboseIter=TRUE)
+
+MarsGird=expand.grid(degree=c(1)
+                     , nprune=(15:20))
+
+# MarsCtrl=trainControl(method='repeatedcv'
+#                       , number = 10
+#                       , repeats = 3
+#                       , verboseIter=TRUE)
+set.seed(938397)
+
+MarsTune=caret::train(Training[, -1]
+                      , Training[, 1]
+                      , method='earth'
+                      , tuneGrid=MarsGird
+                      , trControl=Ctrl)
+
+MarsPred_01=predict(MarsTune, Testing[, -1], type = 'prob')
+MarsPred_01=cbind(Testing$TargetReturnFlag, MarsPred_01)
 
 
 
 
-#DEFINE FUNCTIONS
 
+
+#SVMRadialGrid=expand.grid(sigma= 2^c(-8, -7, -5, -4, -3), C= 2^c(9, 9.5, 10, 11))
+# SVMRadialGrid=expand.grid(sigma= 2^c(-14, -12, -10, -8), C= 2^c(5, 7, 8, 9))
+#SVMRadialGrid=expand.grid(sigma= 2^c(-13.8, -13.5, -13.2, -13, -12.8, -12.5, -12.2, -12), C= 2^c(2, 3, 4, 5))
+#SVMRadialGrid=expand.grid(sigma= 2^c(-13.8, -13.5, -13.2, -13, -12.8, -12.5, -12.2, -12), C= 10^c(-2:2))
+# SVMRadialGrid=expand.grid(sigma= 2^c(-13.8, -13.5, -13.2, -13, -12.8, -12.5, -12.2, -12, -10), C= c(80, 100, 120,140, 180, 200))
+# SVMRadialGrid=expand.grid(sigma= 2^c(-16, -15, -13.8, -13.5, -13.2, -13, -12.8, -12.5, -12.2, -12, -10, -8, -6, -4, -2, -1, 1, 3, 5), C= c(30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80))
+# SVMRadialGrid=expand.grid(sigma= 2^c(-16, -15, -13.8, -13.5, -13.2, -13, -12.8, -12.5, -12.2), C= c( 60, 65, 70, 75))
+SVMRadialGrid=expand.grid(sigma= 2^c(-14.5, -14.2, -14, -13.8, -13.6, -13.8), C=c(18, 20, 24, 26, 30, 32, 35, 40))
+#SVMRadialGrid=expand.grid(sigma= 2^c(-13.2, -13.3, -13.4, -13.5, -13.6, -13.7), C=c(13, 15, 16, 18, 20))
+SVMRadialGrid=expand.grid(sigma= 2^c(-13.2, -13.3, -13.4, -13.5, -13.6, -13.7), C=c( 60, 65, 70, 75))
+SVMRadialGrid=expand.grid(sigma= 2^c(-12.8, -12.5), C=c( 60, 65, 70, 75))
+
+
+# SVMRadialGrid=expand.grid(sigma= 2^c(-12.5), C= 2^c(5))
+# SVMRadialGrid=expand.grid(sigma= 2^c(-12.8), C= 80)
+SVMRadialGrid=expand.grid(sigma= 2^c(-13.2), C= 70)
+#SVMRadialGrid=expand.grid(sigma= c(2, 4, 8, 10, 16, 20, 50, 100, 120, 150), C= c(2, 4, 6, 8, 10))
+#BEST ROC 0.67
+
+# SVMRadialGrid=expand.grid(sigma= 2^c(-2:4), C= 2^c(2, 3, 4, 5))
+# Selecting tuning parameters
+# Fitting sigma = 0.25, C = 0.5 on full training set
+
+#SVMRadialGrid=expand.grid(sigma= 2^c(4, 7, 9, 11), C= 2^c(-1, 2, 3, 4))
+
+
+set.seed(938397)
+
+start = Sys.time()
+SVMTuneRadial=caret::train(Training[, -1]
+                           , Training[, 1]
+                           , method='svmRadial'
+                           , metric='ROC'
+                           , tuneGrid=SVMRadialGrid
+                           , trControl=Ctrl)
+print(Sys.time() - start)
+
+plot(SVMTuneRadial)
+
+SVMRadialPred=predict(SVMTuneRadial, Testing[, -1], type = 'prob')
+SVMRadialPred=cbind(Testing$TargetReturnFlag, SVMRadialPred)
+# 
+# SVMRadialPred=cbind(SVMRadialPred, CutOffDate=test_01$CutOffDate)
+# 
+# test_03=SliceCollection[, c(2, 4)]
+
+library(sqldf)
+test_02=sqldf("select t1.*, t2.BestReturn
+                from SVMRadialPred as t1
+                  left join test_03 as t2 on t1.CutOffDate=t2.CutOffDate")
+
+test_04=test_02[test_02$Yes>=0.45,]
+
+
+#SVMPolyGrid=expand.grid(degree=c(1:5), scale=c(0.001, 0.01, 0.1), C=2^c(2, 3, 4, 5))
+#SVMPolyGrid=expand.grid(degree=c(0.2, 0.5, 1, 1.5, 2), scale=2^c(-14, -12, -10), C=2^c(0.1, 0.5, 1, 2))
+#SVMPolyGrid=expand.grid(degree=c(1.6, 1.8, 2, 2.2, 2.6), scale=c(0.002, 0.0015, 0.001), C=2^c(1, 2, 2.2, 2.5))
+SVMPolyGrid=expand.grid(degree=c(2), scale=c(0.001), C=2^c(2.5))
+#ROC 0.66
+
+SVMTunePoly=caret::train(Training[, -1]
+                         , Training[, 1]
+                           , method='svmPoly'
+                           , metric='ROC'
+                          , tuneGrid=SVMPolyGrid
+                          , trControl=Ctrl)
+
+plot(SVMTunePoly)
+
+SVMPolyPred=predict(SVMTunePoly, Testing[, -1], type = 'prob')
+SVMPolyPred=cbind(Testing$TargetReturnFlag, SVMPolyPred)
+
+
+
+library(gbm)
+
+# XGBtuneGrid = expand.grid(
+#   nrounds=c(100, 350, 600),
+#   #early.stop.round = c(100), 
+#   max_depth = c(2, 3, 4, 5),
+#   eta = c(0.01, 0.02, 0.05),
+#   gamma = c(0.01, 0.2),
+#   colsample_bytree = c(0.3, 0.5, 0.75),
+#   subsample = c(0.50, 0.8),
+#   min_child_weight = c(0))
+
+# The final values used for the model were nrounds = 100, max_depth = 4, eta = 0.01, gamma = 0.2, colsample_bytree
+# = 0.3, min_child_weight = 0 and subsample = 0.8.
+#ROC 0.66
+
+XGBtuneGrid = expand.grid(
+  nrounds=c(50, 100, 150),
+  #early.stop.round = c(100),
+  max_depth = c(4, 6, 8, 10),
+  eta = c(0.0005, 0.005, 0.01, 0.05),
+  gamma = c(0.05, 0.01, 0.1, 0.5), 
+  colsample_bytree = c(0.3, 0.5, 0.75),
+  subsample = c(0.8),
+  min_child_weight = c(0))
+
+# ROC was used to select the optimal model using the largest value.
+# The final values used for the model were nrounds = 150, max_depth = 4, eta = 0.0005, gamma = 0.5,
+# colsample_bytree = 0.3, min_child_weight = 0 and subsample = 0.8.
+#ROC 0.66
+
+
+#FOCSU ON NROUNDS AMD DEPTHS AND LEARNING RATE
+XGBtuneGrid = expand.grid(
+  nrounds=c(150, 200, 250),
+  #early.stop.round = c(100),
+  max_depth = c(3,4),
+  eta = c(0.0005, 0.001, 0.002),
+  gamma = c(0.05, 0.01, 0.1, 0.5), 
+  colsample_bytree = c(0.2, 0.3, 0.5),
+  subsample = c(0.8),
+  min_child_weight = c(0))
+
+
+
+start = Sys.time()
+
+# XGBTune=caret::train(Training[, -1]
+#                       , Training[, 1]
+#                       , method = 'xgbTree'
+#                       , trControl = Ctrl
+#                       , tuneGrid = XGBtuneGrid)
+
+
+XGBTune=caret::train(Training[, -1]
+                     , Training[, 1]
+                     , method = 'xgbTree'
+                     , metric='ROC'
+                     , trControl = Ctrl
+                     , tuneGrid = XGBtuneGrid)
+
+print(Sys.time() - start)
+
+plot(XGBTune)
+
+varImp(XGBTune)
+varImp(SVMTuneRadial)
+varImp(SVMTunePoly)
+varImp(MarsTune)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+confusionMatrix(Testing$TargetReturnFlag, MarsTune$pred)
+
+
+
+library(pROC)
+# Select a parameter setting
+selectedIndices <- rfFit$pred$mtry == 2
+# Plot:
+plot.roc(rfFit$pred$obs[selectedIndices],
+         rfFit$pred$M[selectedIndices])
 

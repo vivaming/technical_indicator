@@ -53,6 +53,16 @@ SilverHLC[, 3]=SilverHLC[, 3]*2
 SilverHLC$Benchmark=rep(40, dim(SilverHLC)[1])
 addTA(SilverHLC, col = c("green", "red", "blue", "black"), lwd = c(1, 1, 3, 1), legend = NULL)
 
+chartSeries(SilverCloseRecent, TA='addMACD(); addBBands(); addRSI(16); addCCI(); addDPO(20);addDPO(3); addROC()', theme = 'white')
+SilverSellRSI=RSI(SilverCloseRecent, n = 16)
+SilverSellRSI$Benchmark=rep(50, dim(SilverSellRSI)[1])
+addTA(SilverSellRSI, col=c(1,2))
+
+SilverBuyRSI=RSI(SilverCloseRecent, n = 16)
+SilverBuyRSI$Benchmark=rep(40, dim(SilverBuyRSI)[1])
+addTA(SilverBuyRSI, col=c(1,3))
+
+
 
 
 SilverRSI=RSIProb(Silver$Settle
@@ -83,14 +93,6 @@ SilverCCI$AbovezWaterRatio
 
 
 
-chartSeries(SilverCloseRecent, TA='addMACD(); addBBands(); addRSI(16); addCCI(); addDPO(20);addDPO(3); addROC()', theme = 'white')
-SilverSellRSI=RSI(SilverCloseRecent, n = 16)
-SilverSellRSI$Benchmark=rep(50, dim(SilverSellRSI)[1])
-addTA(SilverSellRSI, col=c(1,2))
-
-SilverBuyRSI=RSI(SilverCloseRecent, n = 16)
-SilverBuyRSI$Benchmark=rep(40, dim(SilverBuyRSI)[1])
-addTA(SilverBuyRSI, col=c(1,3))
 
 ##############################################################  WHEAT  ##############################################################
 

@@ -253,20 +253,28 @@ TestingData_01=TestingData_01[, -1]
 #                      , nprune=2:20)
 
 MarsGird=expand.grid(degree=1:3
-                     , nprune=c(20, 25, 30, 35, 40))
+                     , nprune=c(12, 14, 18, 20, 25, 30, 35, 40))
 
-MarsCtrl=trainControl(method='repeatedcv'
+MarsCtrl=trainControl(method='CV'
                       , number = 10
-                      , repeats = 3
-                      , verboseIter=TRUE)
+                      , verboseIter=TRUE
+                      #, repeats=3
+                    
+                      )
+
+
 set.seed(10001)
 
 MarsTune=caret::train(TrainingData_01[, -1]
                       , TrainingData_01[, 1]
                       , method='earth'
+                      , metric='RMSE'
                       , tuneGrid=MarsGird
                       , trControl=MarsCtrl
 )
+
+cor(MarsTune$finalModel$fitted.values,TrainingData_01[, 1])
+
 
 # plot(MarsTune)
 # MarsTune
@@ -279,9 +287,10 @@ MarsTune=caret::train(TrainingData_01[, -1]
 
 
 MarsPred_01=predict(MarsTune, TestingData_01[, -1])
-
 Predicted=(MarsPred_01*SD[[1]]+mean[[1]])
 Original=TestingData_01$SLV*SD[[1]]+mean[[1]]
+
+postResample(pred = Predicted, obs = Original)
 
 PredictOriginal=data.frame(Pred=Predicted, Original=Original)
 colnames(PredictOriginal)=c('Pred', 'Original')
@@ -358,6 +367,8 @@ SVMPredicted=(SVMPred*SD[[1]]+mean[[1]])
 
 Original=TestingData_01$SLV*SD[[1]]+mean[[1]]
 
+postResample(pred = SVMPredicted, obs = Original)
+
 #SVMPredictOriginal=data.frame(SVMPred=SVMPredSMA, Original=Original)
 SVMPredictOriginal=data.frame(SVMPred=SVMPredicted, Original=Original)
 colnames(SVMPredictOriginal)=c('SVMPred', 'Original')
@@ -407,4 +418,14 @@ colnames(RFPredictOriginal)=c('Pred', 'Original')
 
 
 ggplot(RFPredictOriginal, aes(x=seq(1, dim(RFPredictOriginal)[1]), y=Pred, col='pred')) + geom_line() +
-  geom_line(data=RFPredictOriginal, aes(x=seq(1, dim(RFPredictOriginal)[1]), y=Original, col='original')) 
+  geom_line(data=RFPredictOriginal, aes(x=seq(1, dim(RFPredictOriginal)[1]), y=Original, col='original'))
+
+
+# ma <- function(x, n = 20){stats::filter(x, rep(1 / n, n), sides = 2)}
+# 
+# test=(SVMPredictOriginal+RFPredictOriginal)/2
+# 
+# test$Pred=ma(x = test$SVMPred)
+# 
+# ggplot(test, aes(x=seq(1, dim(test)[1]), y=Pred, col='pred')) + geom_line() +
+#   geom_line(data=test, aes(x=seq(1, dim(test)[1]), y=Original, col='original'))
